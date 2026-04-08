@@ -1,31 +1,26 @@
 # Wiring Guide
 
+All electronics are hidden inside the compass case. Keep wires short and tidy.
+
 ## Pin Reference
 
 ```
-ESP32 DevKit v1 Pinout (relevant pins)
-=========================================
+ESP32 DevKit v1 (relevant pins)
+================================
 
-                 ┌──────────┐
-            3V3 ─┤          ├─ VIN (5V)
-            GND ─┤          ├─ GND
-           GP15 ─┤          ├─ GP13
-           GP02 ─┤          ├─ GP12
-           GP04 ─┤          ├─ GP14
-      RX2  GP16 ─┤          ├─ GP27
-      TX2  GP17 ─┤  ESP32   ├─ GP26
-           GP05 ─┤          ├─ GP25
-      SCK  GP18 ─┤          ├─ GP33
-           GP19 ─┤          ├─ GP32
-      SDA  GP21 ─┤          ├─ GP35
-      RX0  GP03 ─┤          ├─ GP34
-      TX0  GP01 ─┤          ├─ VN
-      SCL  GP22 ─┤          ├─ VP
-           GP23 ─┤          ├─ EN
-                 └──────────┘
+        3V3  ─┤          ├─ VIN (5V input)
+        GND  ─┤          ├─ GND
+       GP16  ─┤ (RX2)    ├─ GP25  ── Stepper IN4
+       GP17  ─┤ (TX2)    ├─ GP23  ── Stepper IN3
+  Stp1 GP18  ─┤          ├─ GP22  ── I2C SCL
+  Stp2 GP19  ─┤  ESP32   ├─ GP21  ── I2C SDA
+              ─┤          ├─
+              ─┤          ├─
+              ─┤          ├─
+               └──────────┘
 ```
 
-## Connection Diagram
+## Connections
 
 ### GPS Module (NEO-6M)
 
@@ -38,7 +33,7 @@ TX     ───────  GPIO16 (RX2)
 RX     ───────  GPIO17 (TX2)
 ```
 
-The GPS module communicates via UART at 9600 baud. It uses the ESP32's hardware UART2 so it won't conflict with the USB serial (UART0).
+Use UART2 so it doesn't conflict with USB serial. Position the GPS antenna flat under the top of the case lid, facing up.
 
 ### Magnetometer (HMC5883L / GY-271)
 
@@ -47,121 +42,134 @@ GY-271          ESP32
 ──────          ─────
 VCC    ───────  3V3
 GND    ───────  GND
-SDA    ───────  GPIO21 (SDA)
-SCL    ───────  GPIO22 (SCL)
+SDA    ───────  GPIO21
+SCL    ───────  GPIO22
 DRDY   ───────  (not connected)
 ```
 
-The magnetometer shares the I2C bus with the OLED display. The HMC5883L uses I2C address `0x1E`. The QMC5883L (common clone) uses `0x0D` - the library auto-detects.
+**Critical placement:** Mount the magnetometer as far as possible from the stepper motor — at least 3-4cm. The stepper has permanent magnets that will distort readings. Ideally, place the magnetometer near the top of the case and the stepper below it with some vertical separation.
 
-### OLED Display (SSD1306 128x64)
-
-```
-SSD1306         ESP32
-───────         ─────
-VCC    ───────  3V3
-GND    ───────  GND
-SDA    ───────  GPIO21 (SDA)  ← shared with magnetometer
-SCL    ───────  GPIO22 (SCL)  ← shared with magnetometer
-```
-
-The OLED uses I2C address `0x3C` (some modules use `0x3D` — check yours with an I2C scanner if it doesn't work).
-
-### Servo Motor (SG90)
+### Stepper Motor (28BYJ-48 + ULN2003)
 
 ```
-SG90            ESP32
-────            ─────
-Signal (orange/white) ─── GPIO18
-VCC (red)      ──────────  5V (VIN pin or external 5V)
-GND (brown/black) ───────  GND
+ULN2003 Driver     ESP32
+──────────────     ─────
+IN1   ───────────  GPIO18
+IN2   ───────────  GPIO19
+IN3   ───────────  GPIO23
+IN4   ───────────  GPIO25
+VCC   ───────────  5V (from boost converter)
+GND   ───────────  GND
 ```
 
-**Important:** Power the servo from 5V, not 3.3V. The ESP32's VIN pin provides 5V when powered via USB. For battery operation, use the boost converter output. Place a **100uF capacitor** between the servo's VCC and GND to reduce voltage spikes.
+The ULN2003 board has a white JST connector for the stepper motor cable — it just plugs in. The driver board needs 5V to power the motor coils (3.3V is not enough torque).
 
-## Full Wiring Diagram (Text)
-
-```
-                        ┌─────────────┐
-                        │   NEO-6M    │
-                        │   GPS       │
-                        │  VCC GND TX RX
-                        └──┬──┬──┬──┬─┘
-                           │  │  │  │
-    ┌──────────────────────┼──┼──┼──┼──────────────────┐
-    │                 3V3──┘  │  │  │                   │
-    │                 GND─────┘  │  │                   │
-    │                 GP16───────┘  │                   │
-    │                 GP17──────────┘                   │
-    │                                                   │
-    │    ESP32 DevKit                                   │
-    │                                                   │
-    │                 GP21──────┬──────────────┐        │
-    │                 GP22──────┼──────┐       │        │
-    │                           │      │       │        │
-    │                      ┌────┴──┐ ┌─┴───────┴──┐    │
-    │                      │GY-271 │ │  SSD1306    │    │
-    │                      │ SDA   │ │  SDA  SCL   │    │
-    │                      │ SCL   │ │  OLED       │    │
-    │                      └───────┘ └─────────────┘    │
-    │                                                   │
-    │                 GP18─────────────┐                │
-    │                 VIN──────┐       │                │
-    │                 GND──┐   │  ┌────┴───┐           │
-    │                      │   │  │ SG90   │           │
-    │                      │   │  │ Servo  │           │
-    │                      │   └──┤ VCC    │           │
-    │                      └─────┤ GND    │           │
-    │                            └────────┘            │
-    └──────────────────────────────────────────────────┘
-```
-
-## Power Wiring (Battery Option)
+## Complete Internal Wiring
 
 ```
-                  ┌───────────┐
-  USB-C ─────────►│  TP4056   │
-                  │  Charger  │
-                  └─────┬─────┘
-                        │ B+/B-
-                  ┌─────┴─────┐
-                  │  18650    │
-                  │  Battery  │
-                  └─────┬─────┘
-                        │ OUT+/OUT-
-              ┌─────────┴─────────┐
-     ┌────────┤    Slide Switch   │
-     │        └───────────────────┘
-     │
-     ├──────────┐
-     │   ┌──────┴──────┐
-     │   │   MT3608    │
-     │   │ Boost → 5V  │
-     │   └──────┬──────┘
-     │          │ 5V out
-     │          ├────────── ESP32 VIN
-     │          └────────── Servo VCC
-     │
-     └── GND ──────────── ESP32 GND, Servo GND
+                     ┌────────────┐
+                     │  NEO-6M    │   (positioned under lid,
+                     │  GPS       │    antenna facing up)
+                     └──┬──┬──┬──┘
+                        │  │  │
+    ┌───────────────────┼──┼──┼─────────────────────┐
+    │              3V3──┘  │  │                      │
+    │              GND─────┘  │                      │
+    │              GP16───────┘                      │
+    │              GP17───(GPS RX, optional)         │
+    │                                                │
+    │    ESP32 DevKit (hidden in base)               │
+    │                                                │
+    │              GP21───────┐                      │
+    │              GP22───────┼──┐                   │
+    │                         │  │                   │
+    │                    ┌────┴──┴────┐              │
+    │                    │  GY-271    │ (mounted far │
+    │                    │  Compass   │  from motor) │
+    │                    └────────────┘              │
+    │                                                │
+    │  GP18──┐  GP19──┐  GP23──┐  GP25──┐           │
+    └────────┼────────┼────────┼────────┼───────────┘
+             │        │        │        │
+        ┌────┴────────┴────────┴────────┴────┐
+        │          ULN2003 Driver             │
+        │  IN1    IN2    IN3    IN4    VCC GND│
+        │                              │   │  │
+        │         [JST connector]      5V  G  │
+        │              │                      │
+        │         ┌────┴────┐                 │
+        │         │ 28BYJ-48│                 │
+        │         │ Stepper │                 │
+        │         └─────────┘                 │
+        └─────────────────────────────────────┘
+
+              ▲ stepper shaft goes UP through
+                the compass face, needle
+                attaches on top
 ```
 
-Adjust the MT3608 potentiometer to output exactly **5.0V** before connecting anything.
+## Power Wiring
 
-## I2C Bus Notes
+```
+     ┌──────────────┐
+     │   TP4056      │◄── USB-C (hidden charging port
+     │   Charger     │    on bottom or side of case)
+     └──────┬───────┘
+            │ B+/B-
+     ┌──────┴───────┐
+     │   LiPo       │   (flat cell tucked in base)
+     │   Battery     │
+     └──────┬───────┘
+            │
+     ┌──────┴───────┐
+     │  Slide Switch │   (hidden on side/bottom)
+     └──────┬───────┘
+            │
+     ┌──────┴───────┐
+     │   MT3608      │   (set to 5V output)
+     │   Boost       │
+     └──────┬───────┘
+            │ 5V
+            ├──────────── ESP32 VIN pin
+            └──────────── ULN2003 VCC
+```
 
-Both the magnetometer and OLED share the same I2C bus (GPIO21/22). They work on different addresses so there's no conflict:
-- HMC5883L: `0x1E`
-- QMC5883L: `0x0D`
-- SSD1306 OLED: `0x3C`
+Set the MT3608 output to exactly **5.0V** with a multimeter before connecting anything.
 
-No external pull-up resistors are needed — the ESP32 has internal pull-ups, and most breakout boards include them.
+## Physical Layout Inside the Case
+
+```
+        ┌──── clear dome/glass ────┐
+        │                          │
+    ════╪══════════════════════════╪════  ← compass face (printed dial)
+        │    ┌──needle──┐          │
+        │    └────┬─────┘          │
+    ────┼─────────┼────────────────┼───  ← case divider / shelf
+        │    ┌────┴─────┐  ┌──────┤
+        │    │  28BYJ-48│  │GY-271│     ← magnetometer as far
+        │    │  stepper  │  │      │       from motor as possible
+        │    └──────────┘  └──────┤
+        │  ┌────────┐ ┌────────┐  │
+        │  │ ESP32  │ │ULN2003 │  │
+        │  └────────┘ └────────┘  │
+        │  ┌──────┐ ┌──────────┐  │
+        │  │LiPo  │ │TP4056+   │  │
+        │  │      │ │MT3608    │  │
+        │  └──────┘ └──────────┘  │
+    ════╪══════════════════════════╪════  ← bottom of case
+        │  [switch]    [USB port] │
+        └──────────────────────────┘
+```
+
+The stepper shaft pokes through the compass face. The needle sits on top, visible through the glass dome. Everything else is hidden below.
 
 ## Troubleshooting
 
 | Problem | Check |
 |---------|-------|
-| OLED blank | Verify I2C address (try `0x3D`). Check SDA/SCL not swapped. |
-| GPS no fix | Move outdoors or near window. Cold start can take 1-5 minutes. |
-| Compass erratic | Calibrate via web interface. Keep away from magnets/motors. |
-| Servo jittering | Add 100uF cap. Ensure 5V supply can source 500mA+. |
-| WiFi not visible | Check serial monitor for AP SSID. Default: `PerfectCompass`. |
+| Needle doesn't move | Check ULN2003 has 5V. Check stepper JST cable is seated. |
+| Needle points wrong direction | Calibrate magnetometer via web UI. Check motor wiring order. |
+| GPS no fix | GPS antenna must face up, not blocked by metal. Move outdoors. |
+| Compass erratic near motor | Increase separation between magnetometer and stepper. Use a shim/spacer. |
+| WiFi not visible | Check serial monitor via USB. Default AP: `PerfectCompass` / `compass123`. |
+| Short battery life | Stepper coils auto-sleep after 5s idle. If still draining, check boost converter quiescent current. |

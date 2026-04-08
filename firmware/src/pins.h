@@ -7,18 +7,19 @@
 #define GPS_BAUD 9600
 
 // ---- Magnetometer (HMC5883L / QMC5883L) ----
-// Connects via I2C (shared bus with OLED)
+// Connects via I2C
 #define I2C_SDA_PIN 21
 #define I2C_SCL_PIN 22
 
-// ---- Servo Motor ----
-#define SERVO_PIN 18
+// ---- Stepper Motor (28BYJ-48 via ULN2003) ----
+// 4-pin control through ULN2003 driver board
+#define STEPPER_PIN_1 18
+#define STEPPER_PIN_2 19
+#define STEPPER_PIN_3 23
+#define STEPPER_PIN_4 25
 
-// ---- OLED Display (SSD1306 128x64) ----
-// Uses same I2C bus as magnetometer
-#define OLED_WIDTH 128
-#define OLED_HEIGHT 64
-#define OLED_I2C_ADDR 0x3C
+// 28BYJ-48: 2048 half-steps per full revolution (with gear reduction)
+#define STEPS_PER_REVOLUTION 2048
 
 // ---- WiFi AP defaults ----
 #define DEFAULT_AP_SSID "PerfectCompass"

@@ -41,10 +41,15 @@ hr{border:none;border-top:1px solid #333;margin:1rem 0}
 </head>
 <body>
 <div class="container">
-<h1>&#127993; Perfect Compass</h1>
+<h1>Perfect Compass</h1>
 
 <div class="status" id="status">
   Loading status...
+</div>
+
+<div id="gps-indicator" style="text-align:center;margin-bottom:1rem">
+  <div id="gps-dot" style="display:inline-block;width:12px;height:12px;border-radius:50%;background:#555;margin-right:6px;vertical-align:middle"></div>
+  <span id="gps-label" style="font-size:.85rem;color:#aaa">Waiting for GPS</span>
 </div>
 
 <label for="name">Target Name</label>
@@ -102,6 +107,19 @@ async function loadStatus() {
       document.getElementById('lon').placeholder = d.target_lon;
     }
     document.getElementById('decl').value = d.declination;
+
+    // GPS indicator
+    const dot = document.getElementById('gps-dot');
+    const lbl = document.getElementById('gps-label');
+    if (d.gps_valid) {
+      dot.style.background = '#2ecc71';
+      lbl.textContent = 'GPS locked (' + d.satellites + ' satellites)';
+      lbl.style.color = '#2ecc71';
+    } else {
+      dot.style.background = d.satellites > 0 ? '#e97d00' : '#e94560';
+      lbl.textContent = d.satellites > 0 ? 'Acquiring (' + d.satellites + ' sat)...' : 'No GPS signal';
+      lbl.style.color = '#aaa';
+    }
   } catch(e) {
     document.getElementById('status').innerHTML = 'Could not load status';
   }

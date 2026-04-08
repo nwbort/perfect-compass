@@ -1,17 +1,59 @@
 #include "pointer.h"
 #include "pins.h"
-#include <ESP32Servo.h>
-#include <math.h>
+#include <Arduino.h>
 
-static Servo servo;
+// Half-step sequence for 28BYJ-48 — smoother and quieter than full-step.
+// Each entry is {pin1, pin2, pin3, pin4} HIGH/LOW state.
+static const uint8_t HALF_STEP_SEQ[8][4] = {
+    {1, 0, 0, 0},
+    {1, 1, 0, 0},
+    {0, 1, 0, 0},
+    {0, 1, 1, 0},
+    {0, 0, 1, 0},
+    {0, 0, 1, 1},
+    {0, 0, 0, 1},
+    {1, 0, 0, 1},
+};
+
+static const int COIL_PINS[4] = {
+    STEPPER_PIN_1, STEPPER_PIN_2, STEPPER_PIN_3, STEPPER_PIN_4
+};
 
 void Pointer::begin() {
-    servo.setPeriodHertz(50);
-    servo.attach(SERVO_PIN, 500, 2400);  // min/max pulse width in microseconds
-    servo.write(90);  // Center position
+    for (int i = 0; i < 4; i++) {
+        pinMode(COIL_PINS[i], OUTPUT);
+        digitalWrite(COIL_PINS[i], LOW);
+    }
+    _currentStep = 0;
     _currentAngle = 0;
     _targetAngle = 0;
-    Serial.println("[Pointer] Servo initialized");
+    _sleeping = false;
+    Serial.println("[Pointer] Stepper initialized");
+}
+
+void Pointer::setCoils(int step) {
+    int idx = step & 7;  // mod 8
+    for (int i = 0; i < 4; i++) {
+        digitalWrite(COIL_PINS[i], HALF_STEP_SEQ[idx][i]);
+    }
+}
+
+void Pointer::coilsOff() {
+    for (int i = 0; i < 4; i++) {
+        digitalWrite(COIL_PINS[i], LOW);
+    }
+}
+
+void Pointer::stepCW() {
+    _currentStep++;
+    if (_currentStep >= STEPS_PER_REVOLUTION) _currentStep = 0;
+    setCoils(_currentStep);
+}
+
+void Pointer::stepCCW() {
+    _currentStep--;
+    if (_currentStep < 0) _currentStep = STEPS_PER_REVOLUTION - 1;
+    setCoils(_currentStep);
 }
 
 void Pointer::pointTo(float angleDegrees) {
@@ -21,25 +63,46 @@ void Pointer::pointTo(float angleDegrees) {
     _targetAngle = angleDegrees;
 }
 
-void Pointer::update() {
-    // Calculate shortest rotation path (handle 359->1 wrap-around)
+bool Pointer::update() {
+    if (_sleeping) return false;
+
+    // Calculate shortest rotation direction
     float diff = _targetAngle - _currentAngle;
     if (diff > 180.0f) diff -= 360.0f;
     if (diff < -180.0f) diff += 360.0f;
 
-    // Apply smoothing
-    _currentAngle += diff * SMOOTHING;
+    // Dead zone — don't move for tiny changes
+    if (fabs(diff) < DEAD_ZONE) return false;
+
+    // Rate limit steps
+    unsigned long now = micros();
+    if (now - _lastStepTime < STEP_DELAY_US) return true;  // still moving, just waiting
+    _lastStepTime = now;
+
+    // Take one step in the shortest direction
+    if (diff > 0) {
+        stepCW();
+        _currentAngle += 360.0f / STEPS_PER_REVOLUTION;
+    } else {
+        stepCCW();
+        _currentAngle -= 360.0f / STEPS_PER_REVOLUTION;
+    }
 
     // Normalize
     while (_currentAngle < 0) _currentAngle += 360.0f;
     while (_currentAngle >= 360.0f) _currentAngle -= 360.0f;
 
-    // Map 0-360 compass degrees to 0-180 servo degrees
-    // Standard servo has 180 degree range, so we map the full circle.
-    // For a continuous rotation servo, you'd drive speed/direction instead.
-    int servoAngle = (int)((_currentAngle / 360.0f) * 180.0f);
-    servoAngle = constrain(servoAngle, 0, 180);
-    servo.write(servoAngle);
+    return true;
+}
+
+void Pointer::sleep() {
+    coilsOff();
+    _sleeping = true;
+}
+
+void Pointer::wake() {
+    _sleeping = false;
+    setCoils(_currentStep);
 }
 
 float Pointer::getCurrentAngle() const {
